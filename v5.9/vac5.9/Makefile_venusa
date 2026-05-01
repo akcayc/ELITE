@@ -1,0 +1,59 @@
+SHELL=/bin/sh
+NAME=	elitevac64
+CMD=    $(NAME)
+#
+SRCS= command_line.f90 elitevac_data.f90 functions.f90 elitevac.f90 numrec.f splines.f 
+#
+#INCL=	i_vac.f
+#
+#OBJS=   $(SRCS:.f=.o)
+OBJS= command_line.o elitevac_data.o functions.o elitevac.o numrec.o splines.o
+#
+INPUT=	
+#-octane-----------------------------------------------------------------
+#LIBRARIES = -lrlm -lSpecFun -lblas #-lghost -lgrid_xghost -lnag 
+LIBRARIES = -llapack -lblas #-lnew
+#
+DEBUG     = #  -g -check_bounds
+OPTIMIZE  = -O4 # -fast # -tp= x64 #-O #-O5 -fast # -O3 
+LISTING   = # -listing
+#SPECIAL   = -L../libdbl # -p
+#SPECIAL   = -L../../elite4/liblindbl -L../../elite4/liblinblas --staticlink # -p
+#SPECIAL   = -L../libblas64 -L../libSpecFun64 -L../librlm64
+SPECIAL   = -L /opt/pgi/linux86-64/11.10/lib -Bstatic
+COMPILER  = pgfortran  #  /opt/pgi/linux86-64/11.10/bin/pgfortran
+DOUBLE    = -r8 #--dbl #-r8 -d8 #-qautodbl=dblpad
+COMPILE   = $(COMPILER) -c $(LISTING) $(SPECIAL) $(DOUBLE) $(OPTIMIZE)
+LOAD      = $(COMPILER) $(SPECIAL) -o $(CMD) $(LIBS) 
+ARCHIVE   = ar rv
+CATALOG   = ar tv
+#
+.SUFFIXES:
+
+.SUFFIXES: .o .f .f90
+
+all: $(CMD)
+	@echo
+	@echo ">>  `date '+%a %d-%h-%y %r'`  `pwd`  `uname -mns`  $(LOGNAME)"
+
+$(CMD):         $(OBJS) 
+	$(LOAD) $(OBJS) $(LIBRARIES)
+	chmod 755 $(CMD)
+
+#$(SRCS):	$(INCL)
+#	touch $(SRCS)
+
+#.f.o:	$(SRCS)
+#	$(COMPILE) $?
+.f.o:	
+	$(COMPILE) $<
+
+.f90.o:	
+	$(COMPILE) $<
+#-------------------------------------------------------------------------
+clean:
+	rm -f $(CMD) *.a *.o *.mod
+
+tarfile:
+	tar cfv $(NAME).tar makefile $(INPUT) $(INCL) $(SRCS) 
+

@@ -1,0 +1,74 @@
+SHELL=/bin/sh
+NAME=	elite64_ifort
+CMD=    elite64_ifort
+#
+SRCS= command_line.f90 elite_data.f90 elite.f90 \
+eigen.f90 fcal.f90 getxx.f90 hirsh.f90 fun2d.f90\
+matgen.f90 comp_matgen.f90 \
+mercy.f90 nustuff.f90 surfcalc.f90 shoot.f90 \
+solveit.f90 wrteigfunc.f90 signeo.f90 rdvacfile.f90 \
+splinearr.f90 dgesv.f dstedc.f dsytrd.f splines.f
+#graph2a.f matabc.f
+#INCL= i_plas.f
+#
+#OBJS=   $(SRCS:.f=.o)
+OBJS= command_line.o elite_data.o elite.o \
+eigen.o fcal.o getxx.o hirsh.o fun2d.o\
+matgen.o comp_matgen.o \
+mercy.o nustuff.o surfcalc.o shoot.o \
+solveit.o wrteigfunc.o signeo.o rdvacfile.o \
+splinearr.o dgesv.o dstedc.o dsytrd.o splines.o
+#
+INPUT=	
+#-octane-----------------------------------------------------------------
+LIBRARIES = -llapack -lblas #-llapackmt -lblasmt #-lghost -lgrid_xghost -lnag 
+DEBUG     = #  -g -check_bounds
+OPTIMIZE  = # -O1 # -fast -tp x64 #-O3 #-O5 # -O3 
+#OPTIMIZE  = -O5 -arch ev6 -tune ev6 -math_library fast -align dcommons -assume bigarrays -assume nozsize
+LISTING   = # -listing
+SPECIAL   = -L../libdbl64 -L../libblas64 -L../libSpecFun64 -L/usr/lib64 # -Bstatic -L/usr/local/lf9562/lib --staticlink #-L/d/osf/lib/# -p
+
+DOUBLE    = -r8 #--dbl #-r8 -d8 #-qautodbl=dblpad
+COMPILE   = ifort -c $(LISTING) $(SPECIAL) $(DOUBLE) $(OPTIMIZE)
+LOAD      = ifort $(SPECIAL) $(DOUBLE) $(OPTIMIZE) -o $(CMD) $(LIBS)
+ARCHIVE   = ar rv
+CATALOG   = ar tv
+#
+.SUFFIXES:
+
+.SUFFIXES: .o .f .f90
+
+all: $(CMD)
+	@echo
+	@echo ">>  `date '+%a %d-%h-%y %r'`  `pwd`  `uname -mns`  $(LOGNAME)"
+
+$(CMD):         $(OBJS) 
+	$(LOAD) $(OBJS) $(LIBRARIES)
+	chmod 755 $(CMD)
+
+#$(SRCS):	$(INCL)
+#	touch $(SRCS)
+
+#.f.o:	$(SRCS)
+#	$(COMPILE) $?
+.f.o:	
+	$(COMPILE) $<
+
+.f90.o:	
+	$(COMPILE) $<
+#-------------------------------------------------------------------------
+clean:
+	rm -f $(CMD) *.a *.o
+
+tarfile:
+	tar cfv $(NAME).tar makefile $(INPUT) $(INCL) $(SRCS) 
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,53 @@
+SHELL=/bin/sh
+NAME=	eliteeq
+CMD=    $(NAME)
+#
+SRCS= command_line.f90 init.f90 eliteeq.f90 gendat.f90 rdeqdsk.f90 mapperb.f90 spline2d.f output.f90 furplm.f sortstuff.f rayatt.f cntourp.f readbal.f90 readgato.f90 readpest.f90 readeq.f90 writegato.f90
+#
+#INCL=	i_equil.f
+#
+#OBJS=   $(SRCS:.f=.o)
+OBJS= command_line.o init.o eliteeq.o gendat.o rdeqdsk.o mapperb.o spline2d.o output.o furplm.o sortstuff.o rayatt.o cntourp.o readbal.o readgato.o readpest.o readeq.o writegato.o
+#
+INPUT=	
+#-octane-----------------------------------------------------------------
+LIBRARIES = -lrlm #-lblas #-lghost -lgrid_xghost -lnag 
+DEBUG     = #  -g -check_bounds
+OPTIMIZE  = -O # -O3 
+LISTING   = # -listing
+SPECIAL   = -L../librlm32 --staticlink # -p
+DOUBLE    = --dbl # -r8 -d8 #-qautodbl=dblpad
+COMPILE   = lf95 -c $(LISTING) $(SPECIAL) $(DOUBLE) $(OPTIMIZE)
+LOAD      = lf95 $(SPECIAL) -o $(CMD) $(LIBS)
+ARCHIVE   = ar rv
+CATALOG   = ar tv
+#
+.SUFFIXES:
+
+.SUFFIXES: .o .f .f90
+
+all: $(CMD)
+	@echo
+	@echo ">>  `date '+%a %d-%h-%y %r'`  `pwd`  `uname -mns`  $(LOGNAME)"
+
+$(CMD):         $(OBJS) 
+	$(LOAD) $(OBJS) $(LIBRARIES)
+	chmod 755 $(CMD)
+
+#$(SRCS):	$(INCL)
+#	touch $(SRCS)
+
+#.f.o:	$(SRCS)
+#	$(COMPILE) $?
+.f.o:	
+	$(COMPILE) $<
+
+.f90.o:	
+	$(COMPILE) $<
+#-------------------------------------------------------------------------
+clean:
+	rm -f $(CMD) *.a *.o
+
+tarfile:
+	tar cfv $(NAME).tar makefile $(INPUT) $(INCL) $(SRCS) 
+

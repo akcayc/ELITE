@@ -1,0 +1,497 @@
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+! ELITE (Edge Localized Instabilities in Tokamak Experiments)
+!
+! Authors:  P.B. Snyder, H.R. Wilson, R.L. Miller
+!
+! Copyright(c) 1999-2005, All rights reserved
+!
+! Code is under development, and the source code documentation and 
+!  user's guide are presently in a preliminary form. The authors 
+!  therefore request that users consult with the code authors, 
+!  particularly before publishing ELITE results.   We also request 
+!  that users report any errors in the documentation or code to the 
+!  authors, and share any modifications made to the code or accompanying 
+!  idl routines with the authors.  Please request permission from
+!  P.B. Snyder or H.R. Wilson before distributing the code, as we wish 
+!  to keep track of all users and changes to the code, and maintain a 
+!  master version of the code to prevent unnecessary branching.
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+module elitevac_data
+!  Philip B. Snyder 1/26/00
+
+  implicit none
+
+      integer npts  ! # of theta pts used for vac dW calculation
+      integer ng  ! # of gauss integration pts
+      integer verbose  ! higher = more text output
+      real dt
+      real, dimension(:), allocatable :: r,z,theta
+      real, dimension(:), allocatable :: cosi,sini,zti
+      real, dimension(:), allocatable :: xg,wg
+      real n05,n1,n15,n2
+      real pi
+!      real gamma_n05,gamma_n1,gamma_n15,gamma_n2
+      real gn05ovgn1  ! gamma_n05/gamma_n1
+      real gn15ovgn2  ! gamma_n15/gamma_n2
+      real, dimension(:), allocatable :: tsurf,rsurf,zsurf,drdtsurf,dzdtsurf, &
+           omegasurf,bpsurf,y2tsurf,y2rsurf,y2zsurf,y2drdtsurf,y2dzdtsurf, &
+           y2omegasurf,y2bpsurf
+      real fsurf
+      real qsurf
+      integer ntor
+      integer mref
+      integer nsurfpts
+      integer mmin              !minimum poloidal mode number
+      integer mmax              !maximum poloidal mode number
+      character runname*50  ! Name of this run.  Associated i/o files
+                        ! will be named RUNNAME.in, etc.
+      integer lrunname      ! length of runname
+      real qmin
+
+  contains
+
+   subroutine alloc_arrays
+
+!     write(*,*) 'allocating arrays, npts= ',npts,' ng=',ng
+
+     allocate( r(npts),z(npts),theta(npts),cosi(npts),sini(npts),zti(npts))
+     theta=0.; r=0.; z=0.; cosi=0.; sini=0.; zti=0.
+
+     allocate( xg(ng),wg(ng) )
+     xg=0.; wg=0.
+
+   end subroutine alloc_arrays
+
+
+   subroutine alloc_surf
+ 
+!     write(*,*) 'allocating surface arrays, nsurfpts= ',nsurfpts
+
+     allocate( tsurf(nsurfpts),rsurf(nsurfpts),zsurf(nsurfpts), &
+           drdtsurf(nsurfpts),dzdtsurf(nsurfpts), &
+           omegasurf(nsurfpts),bpsurf(nsurfpts),y2tsurf(nsurfpts), &
+           y2rsurf(nsurfpts),y2zsurf(nsurfpts),y2drdtsurf(nsurfpts), &
+           y2dzdtsurf(nsurfpts),y2omegasurf(nsurfpts),y2bpsurf(nsurfpts) )
+
+     tsurf=0.; rsurf=0.; zsurf=0.; drdtsurf=0.; dzdtsurf=0.
+     omegasurf=0.; bpsurf=0.; y2tsurf=0.; y2rsurf=0.; y2zsurf=0.
+     y2drdtsurf=0.; y2dzdtsurf=0.; y2omegasurf=0.; y2bpsurf=0.
+
+   end subroutine alloc_surf
+
+
+   subroutine init
+!-----------------------------------------------------------------------
+! initialize parameters, read in namelist
+!-----------------------------------------------------------------------
+      use command_line
+      implicit none
+      namelist/vac/npts,ng
+      real q0
+      real del
+      integer nn
+      integer nm,nmres
+      logical dens,rotation
+      integer nmwinhalf,nmvac,nxinterp,nmlow
+      real psimin
+!      real xwid
+!      namelist/qref_modes/q0,del,nn,mmax,nm,nmwinhalf
+!      namelist/qref_modes/nn,nm,nmvac,nmwinhalf,xwid,nxinterp,dens
+      namelist/qref_modes/nn,psimin,nmlow,nmvac,nmwinhalf,nxinterp, &
+           dens,rotation,verbose
+      real rv,zv
+      integer j,ios,nunit,m0
+      integer nedge
+      integer icount,ierr,nmvac_inp
+      real gammln
+      real rmin, rmaj  ! minor and major radius for use in nmvac 
+      real fn1, fn2, fn3  ! functions for setting nmvac
+      pi=acos(-1.)
+! vac namelist
+      npts=256                  !number of points on boundary surface
+      ng=4                      !number of Gaussian integration points
+                                !for each dtheta interval
+! qref_modes namelist
+      nn=10                      !toroidal mode number
+! set by nmvac      mmax=1                    !maximum poloidal mode number
+!      nm=12                      !number of poloidal modes
+! set by qsurf     q0=4.0                    !resonant q surface
+! set by qsurf       del=0.01                  !q_surf=q0-del/nn
+!      nmvac=5
+      nmvac=-1  ! will default it to min(nn+3,12) after nn is read
+      nmlow=1
+!      nmwinhalf=8
+      nmwinhalf=-1 ! will default it to nmvac+3 once nmvac set
+!      xwid=3.
+      nxinterp=100
+      psimin=0.7
+      dens=.false.
+      rotation=.false.
+      verbose=4    ! default some text output
+
+! determine the name of the input file:
+       icount=iargc()
+       if(icount  >=  1) then
+          call cl_getarg(1,runname,lrunname,ierr)
+       else
+          write(6,*) 'What is the name of the *.in input file?'
+          write(6,*) '(without the .in suffix):'
+          read(5,*) runname
+          lrunname=index(runname,' ')-1
+       endif
+       
+
+      nunit=35
+      open(unit=nunit,file=runname(1:lrunname)//'.in',iostat=ios)
+      if(ios.ne.0) then
+         write(6,*) 'problem opening file',runname(1:lrunname)//'.in'
+         stop
+      endif
+
+      read(nunit,vac)
+      read(nunit,qref_modes)
+      if (verbose .ge. 1) write(6,*) 'Running elitevac for ', runname(1:lrunname)
+      if (verbose .ge. 1) write(6,vac)
+      if (verbose .ge. 2) write(6,qref_modes)
+      close(nunit)
+
+!  6/20 now call this before setting nmvac and npts
+      call surfdat ! reads the runname.eq file and splines to calculate
+                   !   second derivatives
+
+      rmaj=(rsurf(nsurfpts/2+1)+rsurf(1))/2.
+      rmin=(rsurf(1)-rsurf(nsurfpts/2+1))/2.
+      if (verbose .ge. 2) then
+         write(*,*) 'read surfdat, qsurf=',qsurf,'rmaj=',rmaj, &
+              'rmin=',rmin,'eps=',rmin/rmaj,'nn*qsurf=',real(nn)*qsurf
+      endif
+
+! 5/14 set values of npts for special input values (negative)
+!  npts=-1 sets to 256 for nn<15, and 512 otherwise
+!   set to 1024 if nn>=40
+      if (npts .eq. -1) then
+         npts=256
+         if (nn .ge. 15) npts=512
+         if (nn .ge. 40) npts=1024
+         if (verbose .ge. 1) write(*,*) 'npts=-1 input, set to npts=',npts
+      endif
+! 6/20 npts=-2 sets to 256 for nn*qsurf < 64
+      if (npts .eq. -2) then
+         npts=256
+         if (nn*qsurf .ge. 64) npts=512
+         if (nn*qsurf .ge. 128) npts=1024
+         if (nn*qsurf .ge. 256) npts=2048
+         if (verbose .ge. 1) write(*,*) 'npts=-2 input, nn*qsurf=', &
+              nn*qsurf,' set to npts=',npts
+      endif
+
+! set default values of nmvac and nmwinhalf based on nn:
+      if (nmvac.lt.0) then
+         nmvac_inp=nmvac
+         if (nmvac.eq.-1) then
+            nmvac=min(nn+3,12)
+         else if (nmvac.eq.-2) then
+            nmvac=min(nn+2,11)
+         else if (nmvac.eq.-3) then 
+            nmvac=min(nn+4,15)
+         else if (nmvac.eq.-4) then 
+            nmvac=min(int(sqrt(nn+1.)),12)
+         else if (nmvac.eq.-5) then
+            if (nn .lt. 10.) then
+               nmvac=nn+2
+            else
+               nmvac=min(int((nn*2.)**0.6667+6.),50)
+            endif
+         else if (nmvac.eq.-6) then
+            if (nn .lt. 7) then
+               nmvac=nn+1
+            else
+               nmvac=min(nn+2,15)
+            endif
+         else if (nmvac.eq.-15) then 
+            nmvac=max(int(nn*2.5),10)
+         else if (nmvac.eq.-16) then 
+            nmvac=nn*1.5
+         else if (nmvac.eq.-17) then 
+            nmvac=nn*3.5
+         else if (nmvac.eq.-18) then 
+            nmvac=min(int(nn*1.5),30)
+         else if (nmvac.eq.-19) then 
+            nmvac=min(nn*2,30)
+         else if (nmvac .eq. -20) then
+! 6/20 new default based on assessment of nmvac convergence in 11 cases with a wide range of qsurf and aspect ratio
+            fn1=2.+0.4333*real(nn)*qsurf
+            fn2=15.+0.0343*(rmin/rmaj)*qsurf*(real(nn)*qsurf-30.)
+            fn3=15.+6.*(rmin/rmaj)*qsurf
+            nmvac=min(int(fn1),int(fn3))
+            if (nn*qsurf .ge. 30) nmvac=min(nmvac,int(fn2))
+            if (verbose .ge. 1) write (*,*) 'nmvac=-20 set,', &
+                 'fn1=',int(fn1),' fn2=',int(fn2),' fn3=',int(fn3)
+         else if (nmvac .eq. -21) then
+! 6/20 more relaxed, faster estimate based on assessment of nmvac convergence in 11 cases with a wide range of qsurf and aspect ratio
+            fn1=1.+0.4*real(nn)*qsurf
+            fn2=13.+0.03*(rmin/rmaj)*qsurf*(real(nn)*qsurf-30.)
+            fn3=13.+4.*(rmin/rmaj)*qsurf
+            nmvac=min(int(fn1),int(fn3))
+            if (nn*qsurf .ge. 30) nmvac=min(nmvac,int(fn2))
+            if (verbose .ge. 1) write (*,*) 'nmvac=-21 set,', &
+                 'fn1=',int(fn1),' fn2=',int(fn2),' fn3=',int(fn3)
+      else if (nmvac .eq. -22) then
+! 6/20 more agressive, slow estimate based on assessment of nmvac convergence in 11 cases with a wide range of qsurf and aspect ratio
+            fn1=3.+0.43*real(nn)*qsurf
+            fn2=20.+0.06*(rmin/rmaj)*qsurf*(real(nn)*qsurf-30.)
+            fn3=20.+10.*(rmin/rmaj)*qsurf
+            nmvac=min(int(fn1),int(fn3))
+            if (nn*qsurf .ge. 40) nmvac=min(nmvac,int(fn2))
+            if (verbose .ge. 1) write (*,*) 'nmvac=-21 set,', &
+                 'fn1=',int(fn1),' fn2=',int(fn2),' fn3=',int(fn3) 
+         else
+            write(*,*) ' Entered unsupported nmvac value=',nmvac
+            stop
+         endif
+         if (verbose .ge. 1) write(*,*) &
+              ' nmvac=',nmvac_inp,' input, set to nmvac=',nmvac
+      endif
+      
+      if (nmwinhalf.eq.-1) then
+         nmwinhalf=nmvac+3
+         if (verbose .ge. 1) write(*,*) &
+              'setting nmwinhalf to default value of ',nmwinhalf
+      endif
+
+
+
+
+
+!! make sure mode in vacuum--coding repeated in plas_edge
+!      qsurf=q0-del/nn
+!      m0=nn*q0                  !find first rational surface outside plasma
+!  2/7/00 calculate quantities as appropriate for multi-flux surface version
+      m0=int(nn*qsurf+1.)
+      q0=real(m0)/real(nn)
+      del=(q0-qsurf)*nn
+      if (verbose .ge. 2) write(*,*) 'qsurf= ',qsurf,' m0=',m0,' q0=',q0,' del=',del
+      if ((del<0.) .or. (del>1.)) then
+         write(*,*) 'Something is wrong, must have 0<del<1'
+         stop
+      endif
+      mmax=m0+nmvac-1
+! 9/01 now need to get qmin somehow to get nm and theerefore mmin
+!     either need to calculate and write out in equil, or calculate
+!     both here and in plas
+! 9/5/01 qmin now read in in .eq file in surfdat
+
+      nmres=(qsurf-qmin)*nn+1   ! 9/01 could make this more precise,
+         ! but as long as it's consistent with plas, should be fine
+      nm=nmres+nmvac+nmlow ! total m's in calculation
+      if (verbose .ge. 2) write(*,*) &
+           'number of resonant ms in plasma, nmres=',nmres, &
+           'total nm=nmres+nmvac+nmlow=',nm
+      
+      mmin=mmax-nm+1
+      if (verbose .ge. 1) write(*,*) 'mmin=',mmin,'mmax=',mmax
+!      xmax=m0-mmin
+!      xmax=m0-mmin+xwid
+!      qmin=q0-xmax/real(nn)
+
+! this shouldn't happen anymore
+!   if external rational surface is not in range, shift it:
+      if (mmax.lt.m0) then
+        write(6,*)'WARNING***reset mmax=int(n*qa)+1 to include'
+        write(6,*)'          an external rational surface'
+        mmax=m0
+      end if
+!   make sure all m>0
+      if (nm.gt.mmax) then
+!        write(6,*)'WARNING***reduced nm=mmax for consistency'
+         write(*,*) 'WARNING nm=',nm,'exceeds mmax=',mmax
+!         write(*,*) 'need to reduce nmlow to avoid asking for negative m'
+!         stop
+!        nm=mmax
+      end if
+! now can define mode parameters
+      ntor=nn                   !toroidal mode number
+! redundant      mmin=mmax+1-nm            !minimum mode number
+      nedge=(nmwinhalf+mmax-m0+1)!number of modes reaching edge
+! mref is arbitrary but I'm trying to pick it so results will be most accurate
+      mref=mmax-nedge/2        !reference poloidal mode number
+                                !this is mode number absorbed in G
+! test 4/8/02
+      mref=m0
+
+! allocate the npts & ng arrays
+      call alloc_arrays
+
+
+! define theta array
+      dt=2.d0*pi/npts
+      do j=1,npts
+         theta(j)=(j-1)*dt
+      end do
+! define boundary array
+      do j=1,npts
+         r(j)=rv(theta(j))
+         z(j)=zv(theta(j))
+      end do
+!      write (*,*) 'r array',r, 'z array',z,' theta array', theta
+
+! calculate various gamma function values needed later
+      n05=ntor+0.5d0
+      n1=ntor+1.0d0
+      n15=ntor+1.5d0
+      n2=ntor+2.0d0
+!      call dgamma(n05,gamma_n05)
+!      gamma_n05=exp(gammln(n05))
+! 7/04 only calculate needed ratios of gamma functions, rather than
+!    gammas themselves to avoid numerical overflow for large n>~170
+
+      gn05ovgn1=exp(gammln(n05)-gammln(n1))
+      gn15ovgn2=exp(gammln(n15)-gammln(n2))
+
+!      write(*,*) 'gn05ovgn1=',gn05ovgn1
+!      write(*,*) 'gn15ovgn2=',gn15ovgn2
+
+!      write (*,*) 'gamma_n05 ',gamma_n05,' new way',exp(gammln(n05))
+!      call dgamma(n1,gamma_n1)
+!      gamma_n1=exp(gammln(n1))
+!      write (*,*) 'gamma_n1 ',gamma_n1,' new way',exp(gammln(n1))
+!      call dgamma(n15,gamma_n15)
+!      gamma_n15=exp(gammln(n15))
+!      write (*,*) 'gamma_n15 ',gamma_n15,' new way',exp(gammln(n15))
+!      call dgamma(n2,gamma_n2)
+!      gamma_n2=exp(gammln(n2))
+!      write (*,*) 'gamma_n2 ',gamma_n2,' new way',exp(gammln(n2))
+! gaussian integration
+      if(ng.eq.2) then
+         xg(1)=-0.5773502691896257645091488d0
+         xg(2)=0.5773502691896257645091488d0
+         wg(1)=1.000000000000000000000000d0
+         wg(2)=1.000000000000000000000000d0
+      elseif(ng.eq.4) then
+         xg(1)=-0.8611363115940525752239465d0
+         xg(2)=-0.3399810435848562648026658d0
+         xg(3)=0.3399810435848562648026658d0
+         xg(4)=0.8611363115940525752239465d0
+         wg(1)=0.347854845137453857373064d0
+         wg(2)=0.652145154862546142626936d0
+         wg(3)=0.652145154862546142626936d0
+         wg(4)=0.347854845137453857373064d0
+      elseif(ng.eq.8) then
+         xg(1)=-0.9602898564975362316835609d0
+         xg(2)=-0.7966664774136267395915539d0
+         xg(3)=-0.5255324099163289858177390d0
+         xg(4)=-0.18343464249564980493947614d0
+         xg(5)=0.18343464249564980493947614d0
+         xg(6)=0.5255324099163289858177390d0
+         xg(7)=0.7966664774136267395915539d0
+         xg(8)=0.9602898564975362316835609d0
+         wg(1)=0.1012285362903762591525314d0
+         wg(2)=0.2223810344533744705443560d0
+         wg(3)=0.3137066458778872873379622d0
+         wg(4)=0.3626837833783619829651504d0
+         wg(5)=0.3626837833783619829651504d0
+         wg(6)=0.3137066458778872873379622d0
+         wg(7)=0.2223810344533744705443560d0
+         wg(8)=0.1012285362903762591525314d0
+      elseif(ng.eq.16) then
+         xg(1)=-0.9894009349916499325961542d0
+         xg(2)=-0.9445750230732325760779884d0
+         xg(3)=-0.8656312023878317438804679d0
+         xg(4)=-0.7554044083550030338951012d0
+         xg(5)=-0.6178762444026437484466718d0
+         xg(6)=-0.4580167776572273863424194d0
+         xg(7)=-0.28160355077925891323046050d0
+         xg(8)=-0.09501250983763744018531934d0  
+         xg(9)=0.09501250983763744018531934d0
+         xg(10)=0.28160355077925891323046050d0
+         xg(11)=0.4580167776572273863424194d0
+         xg(12)=0.6178762444026437484466718d0
+         xg(13)=0.7554044083550030338951012d0
+         xg(14)=0.8656312023878317438804679d0
+         xg(15)=0.9445750230732325760779884d0
+         xg(16)=0.9894009349916499325961542d0
+         wg(1)=0.0271524594117540948517806d0
+         wg(2)=0.0622535239386478928628438d0
+         wg(3)=0.0951585116824927848099251d0
+         wg(4)=0.1246289712555338720524763d0
+         wg(5)=0.1495959888165767320815017d0
+         wg(6)=0.1691565193950025381893121d0
+         wg(7)=0.1826034150449235888667637d0
+         wg(8)=0.1894506104550684962853967d0
+         wg(9)=0.1894506104550684962853967d0
+         wg(10)=0.1826034150449235888667637d0
+         wg(11)=0.1691565193950025381893121d0
+         wg(12)=0.1495959888165767320815017d0
+         wg(13)=0.1246289712555338720524763d0
+         wg(14)=0.0951585116824927848099251d0
+         wg(15)=0.0622535239386478928628438d0
+         wg(16)=0.0271524594117540948517806d0
+      else
+         write(6,*) 'invalid value of ng specified'
+         write(6,*) 'ng=',ng
+         stop
+      endif
+      return
+   end subroutine init
+
+
+!-----------------------------------------------------------------------
+   subroutine surfdat
+      implicit none
+      real yp1,ypn
+      real r_v,t_v
+      integer i,ios,nunit
+
+      nunit=71
+      open(unit=nunit,file=runname(1:lrunname)//'.eq',status='old',iostat=ios)
+      if(ios.ne.0) then
+         write(6,*) 'does file', runname(1:lrunname)//'.eq',' exist?'
+         stop
+      endif
+      read(nunit,*) nsurfpts
+
+! can now allocate the surface arrays
+      call alloc_surf
+
+      read(nunit,*) fsurf,qsurf,qmin   ! 9/01 added qmin here
+      read(nunit,*) (tsurf(i),i=1,nsurfpts)
+      read(nunit,*) (rsurf(i),i=1,nsurfpts)
+      read(nunit,*) (zsurf(i),i=1,nsurfpts)
+      read(nunit,*) (drdtsurf(i),i=1,nsurfpts)
+      read(nunit,*) (dzdtsurf(i),i=1,nsurfpts)
+      read(nunit,*) (bpsurf(i),i=1,nsurfpts)
+      read(nunit,*) (omegasurf(i),i=1,nsurfpts)
+      close(nunit)
+!-----------------------------------------------------------------------
+! spline each of the above and save the second-deriv arrays for
+!  future spline evaluations
+!-----------------------------------------------------------------------      
+      yp1=-1.d31
+      ypn=-1.d31
+      call spline(tsurf,rsurf,nsurfpts,yp1,ypn,y2rsurf)
+      call spline(tsurf,zsurf,nsurfpts,yp1,ypn,y2zsurf)
+      call spline(tsurf,drdtsurf,nsurfpts,yp1,ypn,y2drdtsurf)
+      call spline(tsurf,dzdtsurf,nsurfpts,yp1,ypn,y2dzdtsurf)
+      call spline(tsurf,omegasurf,nsurfpts,yp1,ypn,y2omegasurf)
+      call spline(tsurf,bpsurf,nsurfpts,yp1,ypn,y2bpsurf)
+!$$$      write(6,*) 'surfdat check'
+!$$$      do i=1,nsurfpts
+!$$$         write(6,*) tsurf(i),rsurf(i),y2rsurf(i)
+!$$$      end do
+!$$$      t_v=1.4
+!$$$      call splint(tsurf,rsurf,y2rsurf,nsurfpts,t_v,r_v)
+!$$$      write(6,*) 'r_v=',r_v
+      return
+  end subroutine surfdat
+
+
+
+end module elitevac_data
+
+
+

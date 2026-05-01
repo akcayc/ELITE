@@ -1,0 +1,57 @@
+SHELL=/bin/sh
+NAME=	elitevac
+CMD=    $(NAME)
+#
+SRCS= elitevac_data.f90 functions.f90 elitevac.f90 numrec.f splines.f dgesv.f 
+#
+#INCL=	i_vac.f
+#
+#OBJS=   $(SRCS:.f=.o)
+OBJS= elitevac_data.o functions.o elitevac.o numrec.o splines.o dgesv.o 
+#
+INPUT=	
+#-octane-----------------------------------------------------------------
+#LIBRARIES = -lrlm -lSpecFun -lblas #-lghost -lgrid_xghost -lnag 
+LIBRARIES = -lblas #-lnew
+DEBUG     = #  -g -check_bounds
+OPTIMIZE  = -O # -O3 
+LISTING   = # -listing
+#SPECIAL   = -L../libdbl # -p
+SPECIAL   = -L../libdbl -lU77 # -L../libblas_test # -p
+ABSOFT_CRAP = -YEXT_NAMES="LCS" -YEXT_SFX="_"
+DOUBLE    = -N113 #-qautodbl=dblpad
+COMPILE   = f95 -c $(LISTING) $(SPECIAL) $(ABSOFT_CRAP) $(DOUBLE) $(OPTIMIZE)
+LOAD      = f95 $(SPECIAL) -o $(CMD) $(LIBS) 
+ARCHIVE   = ar rv
+CATALOG   = ar tv
+#
+.SUFFIXES:
+
+.SUFFIXES: .o .f .f90
+
+all: $(CMD)
+	@echo
+	@echo ">>  `date '+%a %d-%h-%y %r'`  `pwd`  `uname -mns`  $(LOGNAME)"
+
+$(CMD):         $(OBJS) 
+	$(LOAD) $(OBJS) $(LIBRARIES)
+	chmod 755 $(CMD)
+
+#$(SRCS):	$(INCL)
+#	touch $(SRCS)
+
+#.f.o:	$(SRCS)
+#	$(COMPILE) $?
+.f.o:	
+	$(COMPILE) $<
+
+
+.f90.o:	
+	$(COMPILE) $<
+#-------------------------------------------------------------------------
+clean:
+	rm -f $(CMD) *.a *.o
+
+tarfile:
+	tar cfv $(NAME).tar makefile $(INPUT) $(INCL) $(SRCS) 
+

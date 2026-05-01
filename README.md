@@ -18,5 +18,11 @@ Relevant publications
 - Snyder, P.; Wilson, H.; Ferron, J.; Lao, L.; Leonard, A.; Osborne, T. & Turnbull, A. Edge localized modes and the pedestal: A model based on coupled peeling-ballooning modes; Physics of Plasmas, 9, 2037 (2002)
 - Wilson, H. R., Snyder, P. B., Huysmans, G. T. A., & Miller, R. L. (2002). Numerical studies of edge localized instabilities in tokamaks. Physics of Plasmas, 9(4), 1277-1286
 
+OMEGA INSTALLATION & INSTRUCTIONS
+
+PERLMUTTER INSTALLATION & INSTRUCTIONS
+
+
+
 
 
